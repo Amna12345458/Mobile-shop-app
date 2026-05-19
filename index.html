@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Shop Manager</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 text-gray-800 font-sans antialiased h-screen flex overflow-hidden">
+    
+    <!-- Auth Overlay -->
+    <div id="auth-overlay" class="fixed inset-0 bg-gray-100 z-[100] flex-col justify-center items-center overflow-y-auto hidden"></div>
+
+    <!-- Sidebar for Desktop -->
+    <aside class="hidden md:flex flex-col w-72 bg-white border-r border-gray-200 z-20 flex-shrink-0 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <div class="p-6 flex items-center space-x-3 border-b border-gray-100">
+            <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-lg shadow-brand-500/30">
+                <i class="fa-solid fa-mobile-screen-button text-xl"></i>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight text-gray-800">Shop Manager</h1>
+        </div>
+        <nav class="flex-1 py-6 px-4 space-y-2 overflow-y-auto no-scrollbar">
+            <p class="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Menu</p>
+            <button onclick="navigate('dashboard')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-500 hover:bg-brand-50 hover:text-brand-600 transition-all font-medium group" data-target="dashboard">
+                <i class="fa-solid fa-chart-pie w-5 text-center group-hover:scale-110 transition-transform"></i>
+                <span>Home</span>
+            </button>
+            <button onclick="navigate('inventory')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-500 hover:bg-brand-50 hover:text-brand-600 transition-all font-medium group" data-target="inventory">
+                <i class="fa-solid fa-box-open w-5 text-center group-hover:scale-110 transition-transform"></i>
+                <span>Stock</span>
+            </button>
+            <button onclick="navigate('sales')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-500 hover:bg-brand-50 hover:text-brand-600 transition-all font-medium group" data-target="sales">
+                <i class="fa-solid fa-plus-circle w-5 text-center group-hover:scale-110 transition-transform"></i>
+                <span>Sell</span>
+            </button>
+            <button onclick="navigate('customers')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-500 hover:bg-brand-50 hover:text-brand-600 transition-all font-medium group" data-target="customers">
+                <i class="fa-solid fa-users w-5 text-center group-hover:scale-110 transition-transform"></i>
+                <span>Ledger</span>
+            </button>
+            <div class="pt-6 mt-6 border-t border-gray-100">
+                <p class="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Others</p>
+                <button onclick="navigate('settings')" class="nav-btn w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-gray-500 hover:bg-brand-50 hover:text-brand-600 transition-all font-medium group" data-target="settings">
+                    <i class="fa-solid fa-user-circle w-5 text-center group-hover:scale-110 transition-transform"></i>
+                    <span>Account</span>
+                </button>
+            </div>
+        </nav>
+        <div class="p-4 border-t border-gray-100">
+            <div class="flex items-center space-x-3 p-3 rounded-xl bg-gray-50">
+                <div id="sidebar-user-initial" class="w-8 h-8 rounded-full bg-brand-200 text-brand-700 flex items-center justify-center font-bold text-sm overflow-hidden border border-brand-100">
+                    A
+                </div>
+                <div>
+                    <p id="sidebar-user-name" class="text-sm font-bold text-gray-800 truncate w-32">Admin User</p>
+                    <p class="text-xs text-gray-500">Shop Owner</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Wrapper -->
+    <div class="flex-1 flex flex-col min-w-0 relative">
+        <!-- Top Header Mobile -->
+        <header class="md:hidden bg-brand-600 text-white shadow-md z-10 px-4 py-4 flex justify-between items-center safe-top">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-mobile-screen-button text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-tight header-title-text">Dashboard</h1>
+            </div>
+            <button onclick="toggleNotifications()" class="p-2 rounded-full hover:bg-brand-700 transition relative">
+                <i class="fa-solid fa-bell"></i>
+                <span id="mobile-bell-badge" class="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-brand-600 hidden"></span>
+            </button>
+        </header>
+
+        <!-- Top Header Desktop -->
+        <header class="hidden md:flex bg-white/80 backdrop-blur-md shadow-sm z-10 px-8 py-5 justify-between items-center sticky top-0 border-b border-gray-100">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-800 header-title-text tracking-tight">Dashboard</h2>
+                <p class="text-sm text-gray-500 mt-0.5" id="header-date"></p>
+            </div>
+            <div class="flex items-center space-x-4">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" placeholder="Search..." class="pl-10 pr-4 py-2 border border-gray-200 rounded-full text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all w-64 bg-gray-50 hover:bg-white focus:bg-white">
+                </div>
+                <button onclick="toggleNotifications()" class="w-10 h-10 rounded-full border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-brand-600 transition-colors relative">
+                    <i class="fa-solid fa-bell"></i>
+                    <span id="desktop-bell-badge" class="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white hidden"></span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="app-content" class="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8 relative bg-gray-50/50">
+            <!-- Views will be injected here by app.js -->
+        </main>
+
+        <!-- Bottom Navigation Mobile -->
+        <nav class="md:hidden bg-white border-t border-gray-200 fixed bottom-0 w-full z-20 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+            <div class="flex justify-around items-center h-16">
+                <button onclick="navigate('dashboard')" class="nav-btn active flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-brand-600 transition" data-target="dashboard">
+                    <i class="fa-solid fa-chart-pie text-xl mb-1"></i>
+                    <span class="text-xs font-medium">Home</span>
+                </button>
+                <button onclick="navigate('inventory')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-brand-600 transition" data-target="inventory">
+                    <i class="fa-solid fa-box-open text-xl mb-1"></i>
+                    <span class="text-xs font-medium">Stock</span>
+                </button>
+                <button onclick="navigate('sales')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-brand-600 transition relative" data-target="sales">
+                    <div class="absolute -top-5 bg-brand-500 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg border-4 border-gray-50">
+                        <i class="fa-solid fa-plus text-xl"></i>
+                    </div>
+                    <span class="text-xs font-medium mt-6">Sell</span>
+                </button>
+                <button onclick="navigate('customers')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-brand-600 transition" data-target="customers">
+                    <i class="fa-solid fa-users text-xl mb-1"></i>
+                    <span class="text-xs font-medium">Ledger</span>
+                </button>
+                <button onclick="navigate('settings')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-gray-500 hover:text-brand-600 transition" data-target="settings">
+                    <i class="fa-solid fa-user-circle text-xl mb-1"></i>
+                    <span class="text-xs font-medium">Account</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Notification Drawer -->
+    <div id="notification-drawer" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] hidden justify-end transition-opacity duration-300 pointer-events-none" onclick="if(event.target===this) toggleNotifications()">
+        <div class="bg-white dark:bg-gray-800 w-full max-w-md h-full shadow-2xl flex flex-col pointer-events-auto transform translate-x-full transition-transform duration-300 ease-out" id="notification-drawer-body">
+            <div class="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900 transition-colors">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-brand-50 dark:bg-brand-900/30 rounded-full flex items-center justify-center text-brand-600 dark:text-brand-400">
+                        <i class="fa-solid fa-bell text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-gray-800 dark:text-gray-100 text-lg">Notifications</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400" id="notification-unread-count">0 unread alerts</p>
+                    </div>
+                </div>
+                <button onclick="toggleNotifications()" class="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 flex items-center justify-center transition-colors">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div id="notification-list" class="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-gray-800 transition-colors">
+                <!-- Notifications will be injected dynamically -->
+            </div>
+            
+            <div class="p-4 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex justify-between items-center transition-colors">
+                <button onclick="markAllNotificationsRead()" class="text-sm font-bold text-brand-600 dark:text-brand-400 hover:underline">Mark all as read</button>
+                <button onclick="clearAllNotifications()" class="text-sm font-medium text-red-500 hover:underline">Clear all</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Lockscreen -->
+    <div id="app-lockscreen" class="fixed inset-0 bg-gray-950/95 backdrop-blur-md z-[500] hidden flex-col items-center justify-center p-6 text-white transition-opacity duration-300"></div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 md:top-8 md:right-8 left-4 md:left-auto md:w-80 z-50 flex flex-col items-end pointer-events-none space-y-2"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

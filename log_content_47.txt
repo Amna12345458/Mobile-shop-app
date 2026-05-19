@@ -1,0 +1,24 @@
+The USER performed the following action:
+Show the contents of file d:\Anti-gravity space\app.js from lines 810 to 841
+File Path: `file:///d:/Anti-gravity%20space/app.js`
+Total Lines: 872
+Total Bytes: 49119
+Showing lines 810 to 841
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+810:     if (confirm('WARNING: This will delete all your shop data. Are you sure?')) {
+811:         appState = JSON.parse(JSON.stringify(defaultState));
+812:         saveState();
+813:         showToast('All data cleared');
+814:         navigate('dashboard');
+815:     }
+816: }
+817: 
+818: function showAvatarActionSheet() {
+819:     const sheet = document.getElementById('avatar-action-sheet');
+820:     if (sheet) {
+821:         sheet.classList.remove('hidden');
+822:         sheet.classList.add('flex');
+823:     }
+824: }
+825: 
+<truncated 635 bytes>

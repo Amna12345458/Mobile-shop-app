@@ -1,0 +1,1 @@
+I will run a PowerShell script to directly load the binary `.pb` session file as a UTF8 string and search for `STORAGE_KEY`. Since the binary file contains the complete session history including all full file edits (without truncation), we can extract the complete original `app.js` from it.
