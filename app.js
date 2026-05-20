@@ -2,19 +2,28 @@
 const STORAGE_KEY = 'mobile_shop_manager_data';
 
 // ================================================================
-// REAL SMS SETUP — Firebase Phone Authentication
+// REAL SMS SETUP
 // ----------------------------------------------------------------
-// HOW TO ENABLE REAL SMS TO PHONE:
-//  1. Go to https://console.firebase.google.com
-//  2. Create a new project (free)
-//  3. Go to Authentication > Sign-in method > Enable "Phone"
-//  4. Go to Project Settings > copy your config into FIREBASE_CONFIG
-//  5. Set USE_REAL_SMS = true below
-//  6. Open the app via localhost (not file://)
-//     Run: npx serve . -p 3000  then open http://localhost:3000
+// USE_REAL_SMS OPTIONS:
+//
+//   false      → Simulator mode (OTP shown in toast, no real SMS)
+//
+//   'server'   → Real SMS via local Node.js server (RECOMMENDED)
+//                Steps:
+//                1. Open server.js and fill your Twilio credentials
+//                   (Free signup: https://www.twilio.com/try-twilio)
+//                2. Install Node.js from https://nodejs.org
+//                3. Run in terminal:  node server.js
+//                4. Open browser:     http://localhost:3000
+//                5. Change USE_REAL_SMS to 'server' below
+//
+//   'firebase' → Real SMS via Firebase Phone Auth
+//                (Requires Firebase project + localhost)
 // ================================================================
-const USE_REAL_SMS = false; // ← Change to true after Firebase setup
+const USE_REAL_SMS = 'server'; // ← Change to 'server' after setup
+const SERVER_URL   = 'http://localhost:3000'; // Node.js server address
 
+// Firebase config (only needed if USE_REAL_SMS = 'firebase')
 const FIREBASE_CONFIG = {
     apiKey:            "YOUR_API_KEY",
     authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
@@ -27,11 +36,9 @@ const FIREBASE_CONFIG = {
 let firebaseConfirmation = null;
 
 function initFirebase() {
-    if (!USE_REAL_SMS || typeof firebase === 'undefined') return;
+    if (USE_REAL_SMS !== 'firebase' || typeof firebase === 'undefined') return;
     try {
-        if (!firebase.apps.length) {
-            firebase.initializeApp(FIREBASE_CONFIG);
-        }
+        if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
     } catch (e) {
         console.warn('Firebase init error:', e);
     }
@@ -253,59 +260,76 @@ function handleRegister(e) {
     }
 }
 
-// Send OTP — uses Firebase (real SMS) or Simulator based on USE_REAL_SMS flag
+// Send OTP — supports: false (simulator), 'server' (Node.js), 'firebase'
 async function sendOtpToPhone(phone) {
+    // ── SIMULATOR MODE ──────────────────────────────────────────
     if (!USE_REAL_SMS) {
-        // ── Simulator mode: show code in toast ──
         showPhoneVerificationForm();
         return;
     }
 
-    // ── Firebase mode: send real SMS ──
-    // Show loading on button
+    // Shared: show loading state on Register button
     const submitBtn = document.querySelector('#auth-overlay button[type="submit"]');
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Sending SMS...';
     }
 
+    // ── SERVER MODE (Node.js + Twilio) ──────────────────────────
+    if (USE_REAL_SMS === 'server') {
+        try {
+            const res  = await fetch(`${SERVER_URL}/send-otp`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ phone })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to send SMS');
+
+            // Demo mode: server returns OTP (no Twilio creds yet)
+            if (data.demo && data.otp) {
+                if (tempRegData) tempRegData.code = data.otp;
+                showPhoneVerificationForm(false); // show in toast
+            } else {
+                showPhoneVerificationForm(true);  // real SMS sent
+            }
+        } catch (err) {
+            let msg = 'Cannot connect to server. Make sure node server.js is running.';
+            if (err.message && !err.message.includes('fetch')) msg = err.message;
+            showToast(msg, 'error');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = 'Register'; }
+        }
+        return;
+    }
+
+    // ── FIREBASE MODE ────────────────────────────────────────────
     try {
         // Format Pakistani number: 03XXXXXXXXX → +923XXXXXXXXX
         let formatted = phone.trim().replace(/\s+/g, '');
-        if (formatted.startsWith('0')) {
-            formatted = '+92' + formatted.substring(1);
-        } else if (!formatted.startsWith('+')) {
-            formatted = '+92' + formatted;
-        }
+        if (formatted.startsWith('0'))  formatted = '+92' + formatted.substring(1);
+        else if (!formatted.startsWith('+')) formatted = '+92' + formatted;
 
-        // Reset old reCAPTCHA if exists
+        // Reset old reCAPTCHA
         if (window.recaptchaVerifier) {
             try { window.recaptchaVerifier.clear(); } catch (e) {}
             window.recaptchaVerifier = null;
         }
-
-        // Setup invisible reCAPTCHA
         window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
-            size: 'invisible',
-            callback: () => {}
+            size: 'invisible', callback: () => {}
         });
 
-        // Send OTP via Firebase
         const confirmation = await firebase.auth().signInWithPhoneNumber(formatted, window.recaptchaVerifier);
         firebaseConfirmation = confirmation;
-        showPhoneVerificationForm(true); // true = hide simulator toast
+        showPhoneVerificationForm(true);
 
     } catch (err) {
         console.error('Firebase SMS error:', err);
         let msg = 'Failed to send SMS. Please check your phone number.';
         if (err.code === 'auth/invalid-phone-number')  msg = 'Invalid phone number. Use format: 03XXXXXXXXX';
-        if (err.code === 'auth/too-many-requests')      msg = 'Too many attempts. Please wait and try again.';
-        if (err.code === 'auth/network-request-failed') msg = 'Network error. Check your internet connection.';
+        if (err.code === 'auth/too-many-requests')     msg = 'Too many attempts. Please wait and try again.';
+        if (err.code === 'auth/network-request-failed')msg = 'Network error. Check your internet connection.';
         showToast(msg, 'error');
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = 'Register';
-        }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = 'Register'; }
         if (window.recaptchaVerifier) {
             try { window.recaptchaVerifier.clear(); } catch (e) {}
             window.recaptchaVerifier = null;
@@ -517,30 +541,46 @@ async function handleVerifyOtp() {
         return;
     }
 
-    if (USE_REAL_SMS && firebaseConfirmation) {
-        // ── Firebase Verification ──
+    // ── SERVER MODE Verification ─────────────────────────────
+    if (USE_REAL_SMS === 'server') {
         const btn = document.getElementById('verify-btn');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Verifying...';
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Verifying...'; }
+        try {
+            const res  = await fetch(`${SERVER_URL}/verify-otp`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ phone: tempRegData.phone, code: codeEntered })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Verification failed');
+            _otpSuccess(inputs);
+        } catch (err) {
+            _otpError(inputs);
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Verify &amp; Create Account</span>'; }
+            showToast(err.message || 'Incorrect code! Please try again.', 'error');
         }
+        return;
+    }
+
+    // ── FIREBASE MODE Verification ───────────────────────────
+    if (USE_REAL_SMS === 'firebase' && firebaseConfirmation) {
+        const btn = document.getElementById('verify-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Verifying...'; }
         try {
             await firebaseConfirmation.confirm(codeEntered);
             _otpSuccess(inputs);
         } catch (err) {
             _otpError(inputs);
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Verify &amp; Create Account</span>';
-            }
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Verify &amp; Create Account</span>'; }
         }
+        return;
+    }
+
+    // ── SIMULATOR Verification ───────────────────────────────
+    if (codeEntered === tempRegData.code) {
+        _otpSuccess(inputs);
     } else {
-        // ── Simulator Verification ──
-        if (codeEntered === tempRegData.code) {
-            _otpSuccess(inputs);
-        } else {
-            _otpError(inputs);
-        }
+        _otpError(inputs);
     }
 }
 
