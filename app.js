@@ -1,6 +1,44 @@
 // --- State Management ---
 const STORAGE_KEY = 'mobile_shop_manager_data';
 
+// ================================================================
+// REAL SMS SETUP — Firebase Phone Authentication
+// ----------------------------------------------------------------
+// HOW TO ENABLE REAL SMS TO PHONE:
+//  1. Go to https://console.firebase.google.com
+//  2. Create a new project (free)
+//  3. Go to Authentication > Sign-in method > Enable "Phone"
+//  4. Go to Project Settings > copy your config into FIREBASE_CONFIG
+//  5. Set USE_REAL_SMS = true below
+//  6. Open the app via localhost (not file://)
+//     Run: npx serve . -p 3000  then open http://localhost:3000
+// ================================================================
+const USE_REAL_SMS = false; // ← Change to true after Firebase setup
+
+const FIREBASE_CONFIG = {
+    apiKey:            "YOUR_API_KEY",
+    authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId:         "YOUR_PROJECT_ID",
+    storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId:             "YOUR_APP_ID"
+};
+
+let firebaseConfirmation = null;
+
+function initFirebase() {
+    if (!USE_REAL_SMS || typeof firebase === 'undefined') return;
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(FIREBASE_CONFIG);
+        }
+    } catch (e) {
+        console.warn('Firebase init error:', e);
+    }
+}
+initFirebase();
+
+
 const defaultState = {
     inventory: [],
     sales: [],
@@ -9,7 +47,7 @@ const defaultState = {
     users: [],
     notifications: [
         { id: 1, title: 'Low Stock Alert', message: 'Samsung Galaxy S23 Ultra has only 1 unit remaining in stock.', time: '2 hours ago', unread: true, type: 'warning' },
-        { id: 2, title: 'Installment Pending', message: 'Muhammad Ali\'s installment of Rs. 15,000 was due yesterday.', time: '1 day ago', unread: true, type: 'info' },
+        { id: 2, title: 'New Sale Recorded', message: 'A cash sale of Samsung Galaxy S23 Ultra was completed.', time: '1 day ago', unread: true, type: 'success' },
         { id: 3, title: 'System Updated', message: 'Mobile Shop Manager successfully updated to v2.5.0.', time: '2 days ago', unread: false, type: 'success' }
     ],
     security: {
@@ -32,7 +70,7 @@ if (!appState.security) {
 if (!appState.notifications) {
     appState.notifications = [
         { id: 1, title: 'Low Stock Alert', message: 'Samsung Galaxy S23 Ultra has only 1 unit remaining in stock.', time: '2 hours ago', unread: true, type: 'warning' },
-        { id: 2, title: 'Installment Pending', message: 'Muhammad Ali\'s installment of Rs. 15,000 was due yesterday.', time: '1 day ago', unread: true, type: 'info' },
+        { id: 2, title: 'New Sale Recorded', message: 'A cash sale of Samsung Galaxy S23 Ultra was completed.', time: '1 day ago', unread: true, type: 'success' },
         { id: 3, title: 'System Updated', message: 'Mobile Shop Manager successfully updated to v2.5.0.', time: '2 days ago', unread: false, type: 'success' }
     ];
 }
@@ -61,7 +99,7 @@ function saveState() {
 // --- Auth ---
 function renderAuthForm(type = 'login') {
     const container = document.getElementById('auth-overlay');
-    
+
     if (type === 'login') {
         container.innerHTML = `
             <div class="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md mx-4 animate-[slideDown_0.3s_ease-out]">
@@ -108,6 +146,10 @@ function renderAuthForm(type = 'login') {
                         <input type="email" id="reg-email" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
                     <div>
+                        <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Phone Number</label>
+                        <input type="tel" id="reg-phone" placeholder="e.g. 03001234567" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
+                    </div>
+                    <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Password</label>
                         <input type="password" id="reg-password" required minlength="6" class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
@@ -129,9 +171,9 @@ function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const pass = document.getElementById('login-password').value;
-    
+
     const emailExists = appState.users.some(u => u.email === email);
-    
+
     if (!emailExists) {
         showConfirmModal(
             'Email Not Registered',
@@ -163,13 +205,16 @@ function handleLogin(e) {
     }
 }
 
+let tempRegData = null;
+
 function handleRegister(e) {
     e.preventDefault();
     const name = document.getElementById('reg-name').value;
     const email = document.getElementById('reg-email').value;
+    const phone = document.getElementById('reg-phone').value;
     const pass = document.getElementById('reg-password').value;
     const fileInput = document.getElementById('reg-avatar');
-    
+
     if (appState.users.some(u => u.email === email)) {
         showConfirmModal(
             'Account Already Exists',
@@ -186,22 +231,400 @@ function handleRegister(e) {
         return;
     }
 
+    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+    tempRegData = {
+        name,
+        email,
+        phone,
+        password: pass,
+        code: verificationCode,
+        avatar: ''
+    };
+
     if (fileInput.files && fileInput.files[0]) {
         const reader = new FileReader();
-        reader.onload = function(event) {
-            const avatar = event.target.result;
-            completeRegistration(name, email, pass, avatar);
+        reader.onload = function (event) {
+            tempRegData.avatar = event.target.result;
+            sendOtpToPhone(phone);
         };
         reader.readAsDataURL(fileInput.files[0]);
     } else {
-        completeRegistration(name, email, pass, '');
+        sendOtpToPhone(phone);
     }
 }
 
-function completeRegistration(name, email, pass, avatar) {
-    const newUser = { id: generateId(), name, email, password: pass, avatar };
+// Send OTP — uses Firebase (real SMS) or Simulator based on USE_REAL_SMS flag
+async function sendOtpToPhone(phone) {
+    if (!USE_REAL_SMS) {
+        // ── Simulator mode: show code in toast ──
+        showPhoneVerificationForm();
+        return;
+    }
+
+    // ── Firebase mode: send real SMS ──
+    // Show loading on button
+    const submitBtn = document.querySelector('#auth-overlay button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Sending SMS...';
+    }
+
+    try {
+        // Format Pakistani number: 03XXXXXXXXX → +923XXXXXXXXX
+        let formatted = phone.trim().replace(/\s+/g, '');
+        if (formatted.startsWith('0')) {
+            formatted = '+92' + formatted.substring(1);
+        } else if (!formatted.startsWith('+')) {
+            formatted = '+92' + formatted;
+        }
+
+        // Reset old reCAPTCHA if exists
+        if (window.recaptchaVerifier) {
+            try { window.recaptchaVerifier.clear(); } catch (e) {}
+            window.recaptchaVerifier = null;
+        }
+
+        // Setup invisible reCAPTCHA
+        window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+            size: 'invisible',
+            callback: () => {}
+        });
+
+        // Send OTP via Firebase
+        const confirmation = await firebase.auth().signInWithPhoneNumber(formatted, window.recaptchaVerifier);
+        firebaseConfirmation = confirmation;
+        showPhoneVerificationForm(true); // true = hide simulator toast
+
+    } catch (err) {
+        console.error('Firebase SMS error:', err);
+        let msg = 'Failed to send SMS. Please check your phone number.';
+        if (err.code === 'auth/invalid-phone-number')  msg = 'Invalid phone number. Use format: 03XXXXXXXXX';
+        if (err.code === 'auth/too-many-requests')      msg = 'Too many attempts. Please wait and try again.';
+        if (err.code === 'auth/network-request-failed') msg = 'Network error. Check your internet connection.';
+        showToast(msg, 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Register';
+        }
+        if (window.recaptchaVerifier) {
+            try { window.recaptchaVerifier.clear(); } catch (e) {}
+            window.recaptchaVerifier = null;
+        }
+    }
+}
+
+let otpCountdownInterval = null;
+let otpResendCooldown = 0;
+
+function showPhoneVerificationForm(hideSimulatorToast = false) {
+    const container = document.getElementById('auth-overlay');
+    if (!container || !tempRegData) return;
+
+    // Clear any existing countdown
+    if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+
+    container.innerHTML = `
+        <div class="bg-white p-8 rounded-3xl shadow-xl w-full max-w-md mx-4 animate-[slideDown_0.3s_ease-out]">
+            <!-- Header -->
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-brand-600 text-white rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-lg shadow-brand-500/30 mb-4 relative">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span class="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full border-2 border-white flex items-center justify-center">
+                        <i class="fa-solid fa-check text-white text-[8px]"></i>
+                    </span>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 tracking-tight">Phone Verification</h2>
+                <p class="text-gray-500 text-sm mt-1">A verification code has been sent to your number</p>
+            </div>
+
+            <!-- Phone Info Box -->
+            <div class="bg-brand-50 border border-brand-100 rounded-2xl p-4 mb-6 flex items-center space-x-3">
+                <div class="w-10 h-10 bg-brand-600 text-white rounded-xl flex items-center justify-center flex-shrink-0">
+                    <i class="fa-solid fa-mobile-screen-button"></i>
+                </div>
+                <div>
+                    <p class="text-xs text-brand-600 font-semibold uppercase tracking-wide">SMS Sent To</p>
+                    <p class="font-bold text-gray-800 text-base">${tempRegData.phone}</p>
+                </div>
+            </div>
+
+            <!-- Countdown Timer -->
+            <div class="text-center mb-4">
+                <p class="text-xs text-gray-500">Code expires in:</p>
+                <p id="otp-timer" class="text-2xl font-bold text-brand-600 font-mono">02:00</p>
+            </div>
+
+            <!-- OTP Input Blocks -->
+            <div id="otp-input-row" class="flex justify-center space-x-3 mb-6">
+                <input type="number" inputmode="numeric" id="otp-1" maxlength="1" class="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-200 bg-gray-50 rounded-2xl focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all otp-box">
+                <input type="number" inputmode="numeric" id="otp-2" maxlength="1" class="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-200 bg-gray-50 rounded-2xl focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all otp-box">
+                <input type="number" inputmode="numeric" id="otp-3" maxlength="1" class="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-200 bg-gray-50 rounded-2xl focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all otp-box">
+                <input type="number" inputmode="numeric" id="otp-4" maxlength="1" class="w-14 h-14 text-center text-2xl font-bold border-2 border-gray-200 bg-gray-50 rounded-2xl focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all otp-box">
+            </div>
+
+            <!-- Verify Button -->
+            <button id="verify-btn" onclick="handleVerifyOtp()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-bold text-lg py-4 rounded-xl shadow-lg shadow-brand-500/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>Verify &amp; Create Account</span>
+            </button>
+
+            <!-- Footer Actions -->
+            <div class="flex justify-between items-center text-sm pt-5 mt-4 border-t border-gray-100">
+                <div>
+                    <span class="text-gray-400">Didn't receive the code? </span>
+                    <button id="resend-btn" onclick="resendOtpCode()" class="text-brand-600 font-bold hover:underline disabled:text-gray-400 disabled:no-underline" disabled>
+                        Resend Code (<span id="resend-countdown">30</span>s)
+                    </button>
+                </div>
+                <button onclick="renderAuthForm('register')" class="text-gray-400 hover:text-gray-700 hover:underline text-xs font-medium transition-colors">
+                    <i class="fa-solid fa-arrow-left mr-1"></i>Go Back
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Setup OTP inputs
+    setupOtpInputs();
+
+    // Start 2-minute countdown
+    startOtpTimer(120);
+
+    // Start 30s resend cooldown
+    startResendCooldown(30);
+
+    // Focus first box
+    setTimeout(() => {
+        const first = document.getElementById('otp-1');
+        if (first) first.focus();
+    }, 150);
+
+    // Show OTP in toast (SMS Simulator only)
+    if (!hideSimulatorToast && !USE_REAL_SMS) {
+        setTimeout(() => {
+            showToast(`📱 SMS Simulator — OTP: ${tempRegData.code}`, 'success');
+        }, 700);
+    } else if (USE_REAL_SMS) {
+        setTimeout(() => {
+            showToast('📱 OTP sent! Check your SMS messages.', 'success');
+        }, 700);
+    }
+}
+
+function setupOtpInputs() {
+    const inputs = [1,2,3,4].map(n => document.getElementById(`otp-${n}`));
+
+    inputs.forEach((input, idx) => {
+        if (!input) return;
+
+        // Allow only single digit
+        input.addEventListener('input', (e) => {
+            let val = input.value.replace(/\D/g, '');
+            if (val.length > 1) val = val.slice(-1);
+            input.value = val;
+            if (val && idx < 3) inputs[idx + 1].focus();
+            // Auto-submit if all 4 filled
+            if (inputs.every(i => i.value)) {
+                setTimeout(() => handleVerifyOtp(), 200);
+            }
+        });
+
+        // Handle backspace
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace' && !input.value && idx > 0) {
+                inputs[idx - 1].focus();
+                inputs[idx - 1].value = '';
+            }
+        });
+
+        // Paste support: paste 4-digit code
+        input.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+            if (text.length >= 4) {
+                inputs.forEach((inp, i) => inp.value = text[i] || '');
+                inputs[3].focus();
+                setTimeout(() => handleVerifyOtp(), 200);
+            }
+        });
+    });
+}
+
+function startOtpTimer(seconds) {
+    if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+    let remaining = seconds;
+    const timerEl = document.getElementById('otp-timer');
+
+    otpCountdownInterval = setInterval(() => {
+        remaining--;
+        if (!timerEl || !document.getElementById('otp-timer')) {
+            clearInterval(otpCountdownInterval);
+            return;
+        }
+        const m = String(Math.floor(remaining / 60)).padStart(2, '0');
+        const s = String(remaining % 60).padStart(2, '0');
+        timerEl.textContent = `${m}:${s}`;
+
+        if (remaining <= 30) timerEl.classList.add('text-red-500');
+        else timerEl.classList.remove('text-red-500');
+
+        if (remaining <= 0) {
+            clearInterval(otpCountdownInterval);
+            timerEl.textContent = 'Expired';
+            timerEl.classList.add('text-red-500');
+            // Disable verify button
+            const btn = document.getElementById('verify-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.classList.remove('hover:-translate-y-0.5');
+            }
+            showToast('OTP has expired. Please resend the code.', 'error');
+        }
+    }, 1000);
+}
+
+function startResendCooldown(seconds) {
+    otpResendCooldown = seconds;
+    const btn = document.getElementById('resend-btn');
+    const cntEl = document.getElementById('resend-countdown');
+    if (!btn || !cntEl) return;
+
+    btn.disabled = true;
+    const interval = setInterval(() => {
+        otpResendCooldown--;
+        const el = document.getElementById('resend-countdown');
+        const btnEl = document.getElementById('resend-btn');
+        if (!el || !btnEl) { clearInterval(interval); return; }
+        el.textContent = otpResendCooldown;
+        if (otpResendCooldown <= 0) {
+            clearInterval(interval);
+            btnEl.disabled = false;
+            btnEl.innerHTML = 'Resend Code';
+        }
+    }, 1000);
+}
+
+// handleOtpFocus replaced by event listeners in setupOtpInputs()
+function handleOtpFocus() {}
+
+async function handleVerifyOtp() {
+    if (!tempRegData) return;
+    const inputs = [1,2,3,4].map(n => document.getElementById(`otp-${n}`));
+    const codeEntered = inputs.map(i => i ? i.value : '').join('');
+
+    if (codeEntered.length < 4) {
+        showToast('Please enter the complete 4-digit code.', 'error');
+        return;
+    }
+
+    if (USE_REAL_SMS && firebaseConfirmation) {
+        // ── Firebase Verification ──
+        const btn = document.getElementById('verify-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Verifying...';
+        }
+        try {
+            await firebaseConfirmation.confirm(codeEntered);
+            _otpSuccess(inputs);
+        } catch (err) {
+            _otpError(inputs);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fa-solid fa-circle-check"></i><span>Verify &amp; Create Account</span>';
+            }
+        }
+    } else {
+        // ── Simulator Verification ──
+        if (codeEntered === tempRegData.code) {
+            _otpSuccess(inputs);
+        } else {
+            _otpError(inputs);
+        }
+    }
+}
+
+function _otpSuccess(inputs) {
+    const row = document.getElementById('otp-input-row');
+    if (row) {
+        inputs.forEach(inp => {
+            if (inp) {
+                inp.classList.remove('border-gray-200', 'border-red-400');
+                inp.classList.add('border-green-500', 'bg-green-50', 'text-green-700');
+            }
+        });
+    }
+    const btn = document.getElementById('verify-btn');
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i> Verified!';
+        btn.classList.replace('bg-brand-600', 'bg-green-600');
+    }
+    if (otpCountdownInterval) clearInterval(otpCountdownInterval);
+    setTimeout(() => {
+        completeRegistration(tempRegData.name, tempRegData.email, tempRegData.password, tempRegData.phone, tempRegData.avatar);
+        tempRegData = null;
+        firebaseConfirmation = null;
+    }, 600);
+}
+
+function _otpError(inputs) {
+    const row = document.getElementById('otp-input-row');
+    if (row) {
+        row.classList.add('otp-shake');
+        setTimeout(() => row.classList.remove('otp-shake'), 500);
+    }
+    inputs.forEach(inp => {
+        if (inp) {
+            inp.classList.add('border-red-400', 'bg-red-50');
+            inp.value = '';
+            setTimeout(() => inp.classList.remove('border-red-400', 'bg-red-50'), 600);
+        }
+    });
+    if (inputs[0]) inputs[0].focus();
+    showToast('Incorrect code! Please try again.', 'error');
+}
+
+async function resendOtpCode() {
+    if (!tempRegData) return;
+
+    if (USE_REAL_SMS && tempRegData.phone) {
+        // Re-send via Firebase
+        await sendOtpToPhone(tempRegData.phone);
+        return;
+    }
+
+    // Simulator mode: generate new code
+    const newCode = Math.floor(1000 + Math.random() * 9000).toString();
+    tempRegData.code = newCode;
+
+    // Reset timer
+    startOtpTimer(120);
+    const timerEl = document.getElementById('otp-timer');
+    if (timerEl) timerEl.classList.remove('text-red-500');
+
+    // Re-enable verify button
+    const btn = document.getElementById('verify-btn');
+    if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+    }
+
+    // Clear inputs
+    [1,2,3,4].forEach(n => { const el = document.getElementById(`otp-${n}`); if (el) el.value = ''; });
+    const first = document.getElementById('otp-1');
+    if (first) first.focus();
+
+    startResendCooldown(30);
+    showToast('A new verification code has been sent!', 'success');
+    setTimeout(() => {
+        showToast(`📱 SMS Simulator — New OTP: ${newCode}`, 'success');
+    }, 700);
+}
+
+function completeRegistration(name, email, pass, phone, avatar) {
+    const newUser = { id: generateId(), name, email, password: pass, phone, avatar };
     appState.users.push(newUser);
-    
+
     // Add Welcome Notification
     const welcomeNotif = {
         id: generateId(),
@@ -213,9 +636,9 @@ function completeRegistration(name, email, pass, avatar) {
     };
     if (!appState.notifications) appState.notifications = [];
     appState.notifications.unshift(welcomeNotif);
-    
+
     saveState();
-    
+
     currentUser = newUser;
     localStorage.setItem('current_user', JSON.stringify(currentUser));
     document.getElementById('auth-overlay').classList.add('hidden');
@@ -337,21 +760,12 @@ function navigate(viewName) {
 
 function renderDashboard() {
     const totalSales = appState.sales.reduce((sum, sale) => sum + parseInt(sale.totalAmount), 0);
-    const totalPendingInst = appState.installments.filter(i => !i.isPaid).reduce((sum, i) => sum + parseInt(i.amount), 0);
+    const totalStock = appState.inventory.reduce((sum, item) => sum + parseInt(item.stock), 0);
 
-    // Monthly Profit Calculation (Profit realized from cash sales + profit from paid installments)
+    // Profit Calculation (Sum of profit from all sales)
     let totalProfit = 0;
-
     appState.sales.forEach(sale => {
-        if (sale.type === 'cash') {
-            totalProfit += parseInt(sale.profit);
-        }
-    });
-
-    appState.installments.forEach(inst => {
-        if (inst.isPaid) {
-            totalProfit += parseInt(inst.profitPortion);
-        }
+        totalProfit += parseInt(sale.profit || 0);
     });
 
     return `
@@ -371,11 +785,11 @@ function renderDashboard() {
                 </div>
                 <div class="bg-white border border-gray-100 p-5 rounded-2xl shadow-sm col-span-2 md:col-span-1 flex items-center justify-between hover:shadow-md transition-shadow">
                     <div>
-                        <p class="text-gray-500 text-xs md:text-sm font-medium mb-1">Pending Installments</p>
-                        <h3 class="text-xl md:text-2xl font-bold text-red-500">${formatCurrency(totalPendingInst)}</h3>
+                        <p class="text-gray-500 text-xs md:text-sm font-medium mb-1">Stock Items</p>
+                        <h3 class="text-xl md:text-2xl font-bold text-brand-600">${totalStock} Devices</h3>
                     </div>
-                    <div class="h-10 w-10 md:h-12 md:w-12 bg-red-50 text-red-500 rounded-full flex items-center justify-center">
-                        <i class="fa-solid fa-clock-rotate-left md:text-lg"></i>
+                    <div class="h-10 w-10 md:h-12 md:w-12 bg-brand-50 text-brand-600 rounded-full flex items-center justify-center">
+                        <i class="fa-solid fa-box md:text-lg"></i>
                     </div>
                 </div>
             </div>
@@ -391,16 +805,16 @@ function renderDashboard() {
                         <div class="group p-3 md:p-4 rounded-xl hover:bg-gray-50 border border-transparent hover:border-gray-100 transition-all flex justify-between items-center cursor-pointer">
                             <div class="flex items-center space-x-3 md:space-x-4">
                                 <div class="h-10 w-10 md:h-12 md:w-12 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center shadow-sm">
-                                    <i class="fa-solid ${sale.type === 'cash' ? 'fa-money-bill' : 'fa-calendar-days'} md:text-lg"></i>
+                                    <i class="fa-solid fa-money-bill md:text-lg"></i>
                                 </div>
                                 <div>
                                     <p class="text-sm md:text-base font-bold text-gray-800 group-hover:text-brand-600 transition-colors">${mobile.brand} ${mobile.model}</p>
-                                    <p class="text-xs md:text-sm text-gray-500">${sale.customerName} • <span class="${sale.type === 'cash' ? 'text-green-600' : 'text-orange-500'} capitalize font-medium">${sale.type}</span></p>
+                                    <p class="text-xs md:text-sm text-gray-500">${sale.customerName}</p>
                                 </div>
                             </div>
                             <div class="text-right">
                                 <p class="text-sm md:text-base font-bold text-gray-800">${formatCurrency(sale.totalAmount)}</p>
-                                <p class="text-xs md:text-sm text-brand-600 font-medium">+${formatCurrency(sale.type === 'cash' ? sale.profit : 'Pending')}</p>
+                                <p class="text-xs md:text-sm text-brand-600 font-medium">+${formatCurrency(sale.profit || 0)}</p>
                             </div>
                         </div>
                         `
@@ -435,8 +849,7 @@ function renderInventory() {
                         </div>
                         <div class="flex justify-between items-center mt-4 pt-4 border-t border-gray-50">
                             <div>
-                                <p class="text-xs text-gray-500 mb-1">Purchase: <span class="font-medium text-gray-700">${formatCurrency(item.purchasePrice)}</span></p>
-                                <p class="text-sm font-bold text-brand-600">Retail: ${formatCurrency(item.sellingPrice)}</p>
+                                <p class="text-sm font-bold text-brand-600">Cost: ${formatCurrency(item.purchasePrice)}</p>
                             </div>
                             <button onclick="deleteInventoryItem('${item.id}')" class="text-red-400 p-2.5 hover:bg-red-50 hover:text-red-600 rounded-full transition-colors">
                                 <i class="fa-solid fa-trash"></i>
@@ -484,23 +897,16 @@ function renderAddMobile() {
                     <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center"><i class="fa-solid fa-tags mr-2"></i> Pricing & Stock</h3>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                            <label class="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">Purchase Price</label>
+                            <label class="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">Purchase Price (Cost)</label>
                             <div class="relative">
                                 <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">Rs</span>
                                 <input type="number" id="inv-purchase" placeholder="Cost price" required class="w-full border border-gray-200 bg-gray-50 rounded-xl pl-10 p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                             </div>
                         </div>
                         <div>
-                            <label class="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">Selling Price</label>
-                            <div class="relative">
-                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">Rs</span>
-                                <input type="number" id="inv-selling" placeholder="Retail price" required class="w-full border border-gray-200 bg-gray-50 rounded-xl pl-10 p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
-                            </div>
+                            <label class="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">Initial Stock Quantity</label>
+                            <input type="number" id="inv-stock" required min="1" value="1" class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                         </div>
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-gray-700 uppercase tracking-wider block mb-2">Initial Stock Quantity</label>
-                        <input type="number" id="inv-stock" required min="1" value="1" class="w-full md:w-1/2 border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
                 </div>
 
@@ -538,45 +944,21 @@ function renderSales() {
                 <div class="space-y-4 pt-2">
                     <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100 pb-2">2. Select Mobile</h3>
                     ${availablePhones.length === 0 ? '<p class="text-sm text-red-500 bg-red-50 p-4 rounded-xl border border-red-100">No phones in stock. Add to inventory first.</p>' : `
-                    <select id="sale-mobile" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all appearance-none cursor-pointer">
+                    <select id="sale-mobile" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all appearance-none cursor-pointer" onchange="updateSalePricePlaceholder()">
                         <option value="" disabled selected>Select a Mobile...</option>
-                        ${availablePhones.map(m => `<option value="${m.id}">${m.brand} ${m.model} - ${formatCurrency(m.sellingPrice)}</option>`).join('')}
+                        ${availablePhones.map(m => `<option value="${m.id}" data-cost="${m.purchasePrice}">${m.brand} ${m.model} (IMEI: ${m.imei})</option>`).join('')}
                     </select>
                     `}
                 </div>
 
-                <!-- Sale Type -->
+                <!-- Sale Price -->
                 <div class="space-y-4 pt-2">
-                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100 pb-2">3. Payment Type</h3>
-                    <div class="flex space-x-4">
-                        <label class="flex-1 border-2 border-brand-500 bg-brand-50 rounded-xl p-4 flex items-center justify-center space-x-3 cursor-pointer transition-all">
-                            <input type="radio" name="sale-type" value="cash" checked onchange="toggleInstallmentFields(false)" class="text-brand-600 w-4 h-4">
-                            <span class="text-base font-bold text-brand-800">Cash</span>
-                        </label>
-                        <label class="flex-1 border-2 border-gray-100 rounded-xl p-4 flex items-center justify-center space-x-3 cursor-pointer transition-all hover:bg-gray-50">
-                            <input type="radio" name="sale-type" value="installment" onchange="toggleInstallmentFields(true)" class="text-brand-600 w-4 h-4">
-                            <span class="text-base font-bold text-gray-600">Installment</span>
-                        </label>
+                    <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100 pb-2">3. Sale Price</h3>
+                    <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">Rs</span>
+                        <input type="number" id="sale-price" placeholder="Enter Selling Price" required class="w-full border border-gray-200 bg-gray-50 rounded-xl pl-10 p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
-                </div>
-
-                <!-- Installment Details (Hidden by default) -->
-                <div id="installment-fields" class="space-y-4 pt-2 hidden bg-gray-50 p-5 rounded-xl border border-gray-100">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Final Installment Price (Total)</label>
-                            <input type="number" id="sale-inst-price" placeholder="e.g. 50000" class="w-full border border-gray-200 rounded-xl p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
-                            <p class="text-xs text-gray-500 mt-2"><i class="fa-solid fa-circle-info mr-1"></i> Should include your profit.</p>
-                        </div>
-                        <div>
-                            <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Downpayment (Advance)</label>
-                            <input type="number" id="sale-downpayment" placeholder="Amount paid now" class="w-full border border-gray-200 rounded-xl p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-xs font-bold text-gray-600 uppercase tracking-wider block mb-1.5">Number of Months</label>
-                        <input type="number" id="sale-months" min="1" max="36" placeholder="e.g. 6" class="w-full border border-gray-200 rounded-xl p-3.5 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
-                    </div>
+                    <p id="sale-cost-helper" class="text-xs text-brand-600 mt-1.5 font-medium hidden"></p>
                 </div>
 
                 <button type="submit" class="w-full bg-brand-600 text-white font-bold text-lg py-4 rounded-xl mt-8 shadow-lg shadow-brand-500/30 hover:shadow-xl hover:shadow-brand-500/40 hover:bg-brand-700 transition-all transform hover:-translate-y-0.5">
@@ -587,6 +969,21 @@ function renderSales() {
     `;
 }
 
+function updateSalePricePlaceholder() {
+    const select = document.getElementById('sale-mobile');
+    if (!select) return;
+    const selectedOption = select.options[select.selectedIndex];
+    if (!selectedOption) return;
+    const cost = selectedOption.getAttribute('data-cost');
+    const helper = document.getElementById('sale-cost-helper');
+    if (cost && helper) {
+        helper.innerHTML = `<i class="fa-solid fa-circle-info mr-1"></i> Cost Price for this mobile is <strong>${formatCurrency(cost)}</strong>`;
+        helper.classList.remove('hidden');
+    } else if (helper) {
+        helper.classList.add('hidden');
+    }
+}
+
 function renderCustomers() {
     return `
         <div class="space-y-6">
@@ -594,9 +991,8 @@ function renderCustomers() {
             <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
                 ${appState.customers.length === 0 ? '<div class="col-span-full"><p class="text-sm text-gray-400 text-center py-10 bg-white rounded-2xl border border-gray-100">No customers yet.</p></div>' : ''}
                 ${appState.customers.map(customer => {
-        const customerSales = appState.sales.filter(s => s.customerName === customer.name);
-        const customerInstallments = appState.installments.filter(i => i.customerId === customer.id);
-        const pendingInstallments = customerInstallments.filter(i => !i.isPaid);
+        const customerSales = appState.sales.filter(s => s.customerId === customer.id || s.customerName === customer.name);
+        const totalSpent = customerSales.reduce((sum, s) => sum + parseInt(s.totalAmount), 0);
 
         return `
                     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow flex flex-col">
@@ -606,27 +1002,27 @@ function renderCustomers() {
                                 <p class="text-sm text-gray-500 mt-1"><i class="fa-solid fa-phone text-brand-500 mr-2"></i> ${customer.phone}</p>
                             </div>
                             <div class="text-right">
-                                <span class="${pendingInstallments.length > 0 ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-green-100 text-green-700 border-green-200'} border text-xs px-3 py-1.5 rounded-full font-bold shadow-sm">
-                                    ${pendingInstallments.length} Pending
+                                <span class="bg-brand-50 text-brand-700 border border-brand-200 text-xs px-3 py-1.5 rounded-full font-bold shadow-sm">
+                                    Spent: ${formatCurrency(totalSpent)}
                                 </span>
                             </div>
                         </div>
                         <div class="p-5 space-y-3 bg-white flex-1 overflow-y-auto max-h-64 no-scrollbar">
-                            ${customerInstallments.length === 0 ? '<p class="text-sm text-gray-400 text-center py-4">Cash buyer. No installments.</p>' : ''}
-                            ${customerInstallments.map(inst => `
-                                <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0 ${inst.isPaid ? 'opacity-50' : ''}">
-                                    <div>
-                                        <p class="text-sm font-bold ${inst.isPaid ? 'line-through text-gray-400' : 'text-gray-800'}">
-                                            Month ${inst.monthNumber}: ${formatCurrency(inst.amount)}
-                                        </p>
-                                        <p class="text-xs text-brand-600 mt-0.5">Profit Share: ${formatCurrency(inst.profitPortion)}</p>
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Purchase History (${customerSales.length})</p>
+                            ${customerSales.length === 0 ? '<p class="text-sm text-gray-400 text-center py-4">No purchases recorded.</p>' : ''}
+                            ${customerSales.map(sale => {
+                                const mobile = appState.inventory.find(m => m.id === sale.mobileId) || { brand: 'Unknown', model: 'Device' };
+                                const saleDate = new Date(sale.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+                                return `
+                                    <div class="flex justify-between items-center py-2.5 border-b border-gray-50 last:border-0">
+                                        <div>
+                                            <p class="text-sm font-bold text-gray-800">${mobile.brand} ${mobile.model}</p>
+                                            <p class="text-[10px] text-gray-400 mt-0.5">${saleDate}</p>
+                                        </div>
+                                        <span class="text-sm text-brand-600 font-bold">${formatCurrency(sale.totalAmount)}</span>
                                     </div>
-                                    ${inst.isPaid ?
-                `<span class="text-sm text-green-600 font-bold bg-green-50 px-3 py-1 rounded-full"><i class="fa-solid fa-check mr-1"></i> Paid</span>` :
-                `<button onclick="payInstallment('${inst.id}')" class="text-sm bg-brand-50 hover:bg-brand-600 text-brand-700 hover:text-white border border-brand-200 px-4 py-2 rounded-xl font-bold transition-all shadow-sm">Mark Paid</button>`
-            }
-                                </div>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                     `
@@ -637,10 +1033,10 @@ function renderCustomers() {
 }
 
 function renderSettings() {
-    const avatarHtml = currentUser && currentUser.avatar 
+    const avatarHtml = currentUser && currentUser.avatar
         ? `<img src="${currentUser.avatar}" alt="User" class="w-full h-full object-cover">`
         : `${currentUser ? currentUser.name.charAt(0).toUpperCase() : 'U'}`;
-        
+
     return `
         <div class="space-y-6 max-w-3xl mx-auto">
             <h2 class="font-bold text-gray-800 dark:text-gray-100 text-xl mb-4">My Account</h2>
@@ -775,7 +1171,6 @@ function handleAddInventory(e) {
         model: document.getElementById('inv-model').value,
         imei: document.getElementById('inv-imei').value,
         purchasePrice: parseInt(document.getElementById('inv-purchase').value),
-        sellingPrice: parseInt(document.getElementById('inv-selling').value),
         stock: parseInt(document.getElementById('inv-stock').value)
     };
     appState.inventory.push(item);
@@ -793,39 +1188,9 @@ function deleteInventoryItem(id) {
     }
 }
 
-function toggleInstallmentFields(show) {
-    const fields = document.getElementById('installment-fields');
-    if (show) {
-        fields.classList.remove('hidden');
-        document.getElementById('sale-inst-price').required = true;
-        document.getElementById('sale-downpayment').required = true;
-        document.getElementById('sale-months').required = true;
-
-        // Auto-select styles
-        document.querySelector('input[value="installment"]').parentElement.classList.replace('border-gray-100', 'border-brand-500');
-        document.querySelector('input[value="installment"]').parentElement.classList.add('bg-brand-50');
-        document.querySelector('input[value="installment"]').nextElementSibling.classList.replace('text-gray-600', 'text-brand-800');
-        document.querySelector('input[value="cash"]').parentElement.classList.replace('border-brand-500', 'border-gray-100');
-        document.querySelector('input[value="cash"]').parentElement.classList.remove('bg-brand-50');
-        document.querySelector('input[value="cash"]').nextElementSibling.classList.replace('text-brand-800', 'text-gray-600');
-    } else {
-        fields.classList.add('hidden');
-        document.getElementById('sale-inst-price').required = false;
-        document.getElementById('sale-downpayment').required = false;
-        document.getElementById('sale-months').required = false;
-
-        document.querySelector('input[value="cash"]').parentElement.classList.replace('border-gray-100', 'border-brand-500');
-        document.querySelector('input[value="cash"]').parentElement.classList.add('bg-brand-50');
-        document.querySelector('input[value="cash"]').nextElementSibling.classList.replace('text-gray-600', 'text-brand-800');
-        document.querySelector('input[value="installment"]').parentElement.classList.replace('border-brand-500', 'border-gray-100');
-        document.querySelector('input[value="installment"]').parentElement.classList.remove('bg-brand-50');
-        document.querySelector('input[value="installment"]').nextElementSibling.classList.replace('text-brand-800', 'text-gray-600');
-    }
-}
-
 function handleSaleSubmit(e) {
     e.preventDefault();
-    const type = document.querySelector('input[name="sale-type"]:checked').value;
+    const type = 'cash';
     const mobileId = document.getElementById('sale-mobile').value;
     const mobile = appState.inventory.find(m => m.id === mobileId);
 
@@ -836,6 +1201,7 @@ function handleSaleSubmit(e) {
 
     const customerName = document.getElementById('sale-customer').value;
     const customerPhone = document.getElementById('sale-phone').value;
+    const sellingPrice = parseInt(document.getElementById('sale-price').value);
 
     let customer = appState.customers.find(c => c.phone === customerPhone);
     if (!customer) {
@@ -849,41 +1215,10 @@ function handleSaleSubmit(e) {
         type: type,
         mobileId: mobile.id,
         customerName: customer.name,
-        customerId: customer.id
+        customerId: customer.id,
+        totalAmount: sellingPrice,
+        profit: sellingPrice - mobile.purchasePrice
     };
-
-    if (type === 'cash') {
-        sale.totalAmount = mobile.sellingPrice;
-        sale.profit = mobile.sellingPrice - mobile.purchasePrice;
-    } else {
-        const instPrice = parseInt(document.getElementById('sale-inst-price').value);
-        const downpayment = parseInt(document.getElementById('sale-downpayment').value);
-        const months = parseInt(document.getElementById('sale-months').value);
-
-        sale.totalAmount = instPrice;
-
-        // Total profit on this installment sale
-        const totalProfit = instPrice - mobile.purchasePrice;
-        // The profit realized immediately at downpayment could be calculated, but to distribute evenly over months:
-        const profitPerMonth = totalProfit / months;
-        const remainingAmount = instPrice - downpayment;
-        const monthlyInstallment = remainingAmount / months;
-
-        sale.profit = totalProfit; // Total expected
-
-        // Generate Installments
-        for (let i = 1; i <= months; i++) {
-            appState.installments.push({
-                id: generateId(),
-                saleId: sale.id,
-                customerId: customer.id,
-                monthNumber: i,
-                amount: monthlyInstallment,
-                profitPortion: profitPerMonth,
-                isPaid: false
-            });
-        }
-    }
 
     appState.sales.push(sale);
 
@@ -893,19 +1228,6 @@ function handleSaleSubmit(e) {
     saveState();
     showToast('Sale completed successfully!');
     navigate('dashboard');
-}
-
-function payInstallment(instId) {
-    if (confirm('Mark this installment as paid?')) {
-        const inst = appState.installments.find(i => i.id === instId);
-        if (inst) {
-            inst.isPaid = true;
-            inst.paidDate = new Date().toISOString();
-            saveState();
-            showToast('Installment paid successfully!');
-            navigate('customers');
-        }
-    }
 }
 
 function showConfirmModal(title, message, onConfirm, okText = 'OK', cancelText = 'Cancel', isDanger = true) {
@@ -990,7 +1312,7 @@ function handleUpdateAvatar(event) {
     const file = event.target.files[0];
     if (file) {
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             if (currentUser) {
                 currentUser.avatar = e.target.result;
                 const userIndex = appState.users.findIndex(u => u.id === currentUser.id);
@@ -1394,7 +1716,7 @@ function verifyForgotPinPassword() {
         appState.security.pin = '';
         appState.security.biometricsEnabled = false;
         saveState();
-        
+
         hideForgotPinModal();
         unlockAppSuccess();
         showToast('App lock disabled successfully!', 'success');
@@ -1413,7 +1735,7 @@ function pressLockKey(key) {
         if (lockInputPin.length < 4) {
             lockInputPin += key;
             updatePinDots();
-            
+
             if (lockInputPin.length === 4) {
                 setTimeout(verifyLockPin, 200);
             }
@@ -1528,7 +1850,7 @@ function triggerFingerprintScan() {
 function runMockScan() {
     const statusText = document.getElementById('bio-scan-status');
     if (statusText) statusText.innerText = "Analyzing fingerprint fingerprint details...";
-    
+
     setTimeout(() => {
         const overlay = document.getElementById('fingerprint-scan-overlay');
         if (overlay) {
@@ -1615,7 +1937,7 @@ function showPrivacyModal() {
         </div>
     `;
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
+
     const modal = document.getElementById('privacy-modal');
     modal.addEventListener('click', (e) => {
         if (e.target === modal) hidePrivacyModal();
