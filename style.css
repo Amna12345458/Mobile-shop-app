@@ -25,12 +25,14 @@ body {
 
 /* Navigation active state */
 .nav-btn.active {
-    color: #16a34a; /* brand-600 */
+    color: #16a34a;
+    /* brand-600 */
 }
 
 @media (min-width: 768px) {
     aside .nav-btn.active {
-        background-color: #f0fdf4; /* brand-50 */
+        background-color: #f0fdf4;
+        /* brand-50 */
         color: #16a34a;
         font-weight: 600;
     }
@@ -117,34 +119,128 @@ html.dark body {
 }
 
 /* Core background overrides */
-html.dark .bg-white { background-color: #1f2937 !important; border-color: #374151 !important; }
-html.dark .bg-gray-50 { background-color: #111827 !important; border-color: #374151 !important; }
-html.dark .bg-gray-100 { background-color: #374151 !important; border-color: #4b5563 !important; }
+html.dark .bg-white {
+    background-color: #1f2937 !important;
+    border-color: #374151 !important;
+}
+
+html.dark .bg-gray-50 {
+    background-color: #111827 !important;
+    border-color: #374151 !important;
+}
+
+html.dark .bg-gray-100 {
+    background-color: #374151 !important;
+    border-color: #4b5563 !important;
+}
 
 /* Text overrides */
-html.dark .text-gray-800 { color: #f9fafb !important; }
-html.dark .text-gray-700 { color: #e5e7eb !important; }
-html.dark .text-gray-600 { color: #d1d5db !important; }
-html.dark .text-gray-500 { color: #9ca3af !important; }
+html.dark .text-gray-800 {
+    color: #f9fafb !important;
+}
+
+html.dark .text-gray-700 {
+    color: #e5e7eb !important;
+}
+
+html.dark .text-gray-600 {
+    color: #d1d5db !important;
+}
+
+html.dark .text-gray-500 {
+    color: #9ca3af !important;
+}
 
 /* Borders */
-html.dark .border-gray-50, html.dark .border-gray-100, html.dark .border-gray-200 { border-color: #374151 !important; }
+html.dark .border-gray-50,
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+    border-color: #374151 !important;
+}
 
 /* Components */
-html.dark #auth-overlay { background-color: #111827 !important; }
-html.dark aside .nav-btn.active { background-color: rgba(34, 197, 94, 0.2) !important; }
-html.dark .nav-btn:hover { background-color: rgba(34, 197, 94, 0.1) !important; }
-html.dark .bg-brand-50 { background-color: rgba(34, 197, 94, 0.1) !important; }
-html.dark header.bg-white\/80 { background-color: rgba(31, 41, 55, 0.8) !important; }
-html.dark .bg-gray-50\/50, html.dark #app-content { background-color: #111827 !important; }
+html.dark #auth-overlay {
+    background-color: #111827 !important;
+}
+
+html.dark aside .nav-btn.active {
+    background-color: rgba(34, 197, 94, 0.2) !important;
+}
+
+html.dark .nav-btn:hover {
+    background-color: rgba(34, 197, 94, 0.1) !important;
+}
+
+html.dark .bg-brand-50 {
+    background-color: rgba(34, 197, 94, 0.1) !important;
+}
+
+html.dark header.bg-white\/80 {
+    background-color: rgba(31, 41, 55, 0.8) !important;
+}
+
+html.dark .bg-gray-50\/50,
+html.dark #app-content {
+    background-color: #111827 !important;
+}
 
 /* Inputs */
-html.dark input, html.dark select {
+html.dark input,
+html.dark select {
     background-color: #374151 !important;
     border-color: #4b5563 !important;
     color: #f9fafb !important;
 }
-html.dark input:focus, html.dark select:focus {
+
+html.dark input:focus,
+html.dark select:focus {
     background-color: #1f2937 !important;
     border-color: #22c55e !important;
+}
+
+/* --- OTP Verification Styles --- */
+
+/* Remove number input arrows */
+.otp-box::-webkit-outer-spin-button,
+.otp-box::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.otp-box[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Shake animation on wrong OTP */
+@keyframes otpShake {
+    0%, 100% { transform: translateX(0); }
+    15%       { transform: translateX(-8px); }
+    30%       { transform: translateX(8px); }
+    45%       { transform: translateX(-6px); }
+    60%       { transform: translateX(6px); }
+    75%       { transform: translateX(-3px); }
+    90%       { transform: translateX(3px); }
+}
+
+.otp-shake {
+    animation: otpShake 0.5s ease-in-out;
+}
+
+/* OTP timer pulse when low */
+@keyframes timerPulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
+#otp-timer.text-red-500 {
+    animation: timerPulse 1s ease-in-out infinite;
+}
+
+/* OTP success glow */
+.otp-box.border-green-500 {
+    box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15);
+}
+
+/* OTP error glow */
+.otp-box.border-red-400 {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
 }
