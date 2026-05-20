@@ -153,10 +153,6 @@ function renderAuthForm(type = 'login') {
                         <input type="email" id="reg-email" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Phone Number</label>
-                        <input type="tel" id="reg-phone" placeholder="e.g. 03001234567" required class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
-                    </div>
-                    <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Password</label>
                         <input type="password" id="reg-password" required minlength="6" class="w-full border border-gray-200 bg-gray-50 rounded-xl p-4 text-sm focus:bg-white focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none transition-all">
                     </div>
@@ -218,7 +214,6 @@ function handleRegister(e) {
     e.preventDefault();
     const name = document.getElementById('reg-name').value;
     const email = document.getElementById('reg-email').value;
-    const phone = document.getElementById('reg-phone').value;
     const pass = document.getElementById('reg-password').value;
     const fileInput = document.getElementById('reg-avatar');
 
@@ -238,25 +233,20 @@ function handleRegister(e) {
         return;
     }
 
-    const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-    tempRegData = {
-        name,
-        email,
-        phone,
-        password: pass,
-        code: verificationCode,
-        avatar: ''
+    let avatar = '';
+    const registerDirectly = () => {
+        completeRegistration(name, email, pass, '', avatar);
     };
 
     if (fileInput.files && fileInput.files[0]) {
         const reader = new FileReader();
         reader.onload = function (event) {
-            tempRegData.avatar = event.target.result;
-            sendOtpToPhone(phone);
+            avatar = event.target.result;
+            registerDirectly();
         };
         reader.readAsDataURL(fileInput.files[0]);
     } else {
-        sendOtpToPhone(phone);
+        registerDirectly();
     }
 }
 
